@@ -49,6 +49,13 @@ def message(request, id):
     msg.generate_response()
     return HttpResponse(json.dumps({'id':msg.id}))
 
+@csrf_exempt
+def response(request, id):
+    if not request.method == 'GET':
+        return HttpResponse('WRONG METHOD')
+    log_item = LogItem.objects.get(id=id)
+    return HttpResponse(log_item.get_newest_response())
+
 def delete(request, id):
     return HttpResponse("Delete with ID {}".format(id))
 
