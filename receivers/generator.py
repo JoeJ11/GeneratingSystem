@@ -137,7 +137,7 @@ class Generator():
         with open('word_to_index.pkl', 'wb') as f_out:
             pickle.dump(wd_to_idx, f_out)
 
-        training_ratio = 0.6
+        training_ratio = 0.8
 
         with open('feature_training.pkl', 'wb') as f_out:
             pickle.dump(np.array([wd_to_idx[item] for item in self.WORDLIB[:int(training_ratio*len(self.WORDLIB))]]), f_out)

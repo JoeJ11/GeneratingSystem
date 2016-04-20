@@ -43,12 +43,14 @@ logging.basicConfig(filename='lstm_info.log',level=logging.DEBUG)
 try:
     with open('feature_training.pkl','rb') as f_in:
         features = pickle.load(f_in)
+    print("Length of training data: {}".format(len(features)))
     with open('index_to_word.pkl', 'rb') as f_in:
         ix_to_char = pickle.load(f_in)
     with open('word_to_index.pkl', 'rb') as f_in:
         char_to_ix = pickle.load(f_in)
     with open('feature_validation.pkl', 'rb') as f_in:
         validations = pickle.load(f_in)
+    print("Length of validation data: {}".format(len(validations)))
 
 except Exception as e:
     print("Please verify the location of the input file/URL.")
@@ -275,10 +277,11 @@ def main(num_epochs=NUM_EPOCHS):
             print("Epoch {} average loss = {}".format(it*1.0*PRINT_FREQ/data_size*BATCH_SIZE, avg_cost / PRINT_FREQ))
             logging.info("Epoch {} average loss = {}".format(it*1.0*PRINT_FREQ/data_size*BATCH_SIZE, avg_cost / PRINT_FREQ))
             if int(it*1.0*PRINT_FREQ/data_size*BATCH_SIZE) > epoch_counter:
+                epoch_counter += 1
+                np.savez('model_{}.npz'.format(epoch_counter), *lasagne.layers.get_all_param_values(l_out))
                 val_p = 0
                 tmp_cost = 0
                 counter = 0
-                epoch_counter += 1
                 while(val_p+BATCH_SIZE+SEQ_LENGTH < len(validations)):
                     x,y = gen_data(val_p, data=vecs_val, target=validations)
                     val_p += SEQ_LENGTH + BATCH_SIZE - 1
