@@ -184,6 +184,7 @@ def main(num_epochs=NUM_EPOCHS):
 
     # The loss function is calculated as the mean of the (categorical) cross-entropy between the prediction and target.
     cost = T.nnet.categorical_crossentropy(network_output,target_values).mean()
+    loss = cost + 1e-4 * lasagne.regularization.regularize_network_params(l_out, lasagne.regularization.l2)
 
     # Retrieve all parameters from the network
     all_params = lasagne.layers.get_all_params(l_out,trainable=True)
@@ -191,12 +192,12 @@ def main(num_epochs=NUM_EPOCHS):
     # Compute AdaGrad updates for training
     print("Computing updates ...")
     logging.debug('Computing updates ...')
-    updates = lasagne.updates.adadelta(cost, all_params, LEARNING_RATE)
+    updates = lasagne.updates.adadelta(loss, all_params, LEARNING_RATE)
 
     # Theano functions for training and computing cost
     print("Compiling functions ...")
     logging.debug('Compiling functions')
-    train = theano.function([l_in.input_var, target_values], cost, updates=updates, allow_input_downcast=True)
+    train = theano.function([l_in.input_var, target_values], loss, updates=updates, allow_input_downcast=True)
     compute_cost = theano.function([l_in.input_var, target_values], cost, allow_input_downcast=True)
 
     # In order to generate text from the network, we need the probability distribution of the next character given
