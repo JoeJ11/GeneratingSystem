@@ -21,9 +21,11 @@ def register(request):
     cluster = Cluster.objects.filter(configuration=params['configuration_id']).filter(user_name=params['user_name'])
     authorized_files = {}
     init_index = {}
+    cluster_index = -1
     if len(cluster) == 0:
         cluster = Cluster(configuration=params['configuration_id'], user_name=params['user_name'])
         cluster.save()
+        cluster_index = cluster.id
         for file_name in ast.literal_eval(params['file_list']):
             log_item = cluster.logitem_set.create(file_name=file_name)
             log_item.save()
@@ -31,10 +33,11 @@ def register(request):
             init_index[file_name] = 0
     else:
         cluster = cluster[0]
+        cluster_index = cluster.id
         for log_item in cluster.logitem_set.all():
             authorized_files[log_item.file_name]=log_item.id
             init_index[log_item.file_name] = log_item.message_set.count()
-    return HttpResponse(json.dumps({'file_list':authorized_files, 'init_index':init_index}))
+    return HttpResponse(json.dumps({'file_list':authorized_files, 'init_index':init_index, 'cluster_index':cluster_index}))
 
 @csrf_exempt
 def message(request, id):
@@ -53,8 +56,8 @@ def message(request, id):
 def response(request, id):
     if not request.method == 'GET':
         return HttpResponse('WRONG METHOD')
-    log_item = LogItem.objects.get(id=id)
-    return HttpResponse(log_item.get_newest_response())
+    cluster = Cluster.objects.get(id=id)
+    return HttpResponse(cluster.get_newest_response())
 
 def delete(request, id):
     return HttpResponse("Delete with ID {}".format(id))

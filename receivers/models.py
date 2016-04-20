@@ -2,6 +2,7 @@ from __future__ import unicode_literals
 
 from django.db import models
 import json
+import generator
 # Create your models here.
 
 class Cluster(models.Model):
@@ -9,6 +10,12 @@ class Cluster(models.Model):
     user_name = models.CharField(max_length=100)
     def __str__(self):
         return "Configuration {}".format(self.configuration)
+
+    def get_newest_response(self):
+        response_list = []
+        for log_item in self.logitem_set.all():
+            response_list += log_item.get_newest_response()
+        return json.dumps(response_list)
 
 class LogItem(models.Model):
     file_name = models.CharField(max_length=100)
@@ -23,12 +30,14 @@ class LogItem(models.Model):
         response_list = []
         for msg in msg_set:
             if msg.order >= self.head_order:
-                response_list.append({'response':msg.response,'meta_data':msg.meta_data})
+                if len(msg.response) > 0:
+                    response_list.append({'response':msg.response,'meta_data':msg.meta_data})
             else:
                 break
         if len(msg_set) > 0:
             self.head_order = msg_set[0].order+1
-        return json.dumps(response_list)
+        self.save()
+        return response_list
 
 class Message(models.Model):
     content = models.TextField()
@@ -41,4 +50,6 @@ class Message(models.Model):
         return self.content
 
     def generate_response(self):
+        self.response = generator.generator.response(self.content)
+        self.save()
         return
