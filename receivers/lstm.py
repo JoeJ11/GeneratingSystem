@@ -36,9 +36,14 @@ import lasagne
 import urllib2 #For downloading the sample text file. You won't need this if you are providing your own file.
 import datetime
 import logging
+import re
 
 logging.basicConfig(filename='lstm_debug.log',level=logging.DEBUG)
 logging.basicConfig(filename='lstm_info.log',level=logging.DEBUG)
+
+# TOKEN_PATTERN = '[\"\'].+?[\"\']|[a-zA-Z0-9\(\)\[\]]+|[\.\{\}\:\;\=\+\-\*\/]'
+TOKEN_PATTERN = '[a-zA-Z0-9\_\(\)\[\]]+|[\.\{\}\:\;\=\+\-\*\/]'
+# TOKEN_PATTERN = '[a-zA-Z0-9\_]+'
 
 try:
     with open('feature_training.pkl','rb') as f_in:
@@ -61,8 +66,8 @@ except Exception as e:
 #                 'JSONObject', 'js', '=', 'new', 'JSONObject(value', '.', 'toString())', ';', 'if', '(js', '.', 'has(', 'user_id', '))', '{',
 #                 'userID', '.', 'set(js', '.', 'getString(', 'user_id', '))', ';', 'context', '.', 'write(userID', 'new', 'Text(', 't', '))', ';']
 text_phrase = [
-                'while', '(tokenizer', '.', 'hasMoreTokens())', '{', 'try', '{', 'JSONObject', 'weibo', '=', 'new', 'JSONObject(tokenizer', '.', 'nextToken())', ';',
-                'if', '(', 'weibo', '.', 'has(', 'user_id', '))', '{', 'id', '.', 'set(', 'weibo', '.', 'getString(', 'user_id', ')', ')', ';', 'one', '.', 'set(', '1', ')', ';']
+            'String', 'id', 'null', 'String', 'line', 'value', 'toString()', 'JSONObject', 'js', 'null', ';', 'try', 'js', 'new', 'JSONObject', 'line',
+            'catch', 'JSONException', 'e', 'e', 'printStackTrace', 'if', 'js', 'has', 'user_id']
 generation_phrase = np.zeros(len(text_phrase))
 infrequent_table = {}
 infrequent_counter = 0
@@ -100,7 +105,7 @@ lasagne.random.set_rng(np.random.RandomState(1))
 SEQ_LENGTH = 20
 
 # Number of units in the two hidden (LSTM) layers
-N_HIDDEN = 128
+N_HIDDEN = 64
 
 # Optimization learning rate
 LEARNING_RATE = 1
@@ -147,38 +152,13 @@ def gen_data(p, batch_size = BATCH_SIZE, data=vecs, target=features, return_targ
 
 
 def main(num_epochs=NUM_EPOCHS):
-    print("Building network ...")
-    logging.debug('Building network ...')
-   
-    # First, we build the network, starting with an input layer
-    # Recurrent layers expect input of shape
-    # (batch size, SEQ_LENGTH, num_features)
+    input_var = T.tensor3('inputs')
 
-    l_in = lasagne.layers.InputLayer(shape=(None, None, vocab_size))
-
-    # We now build the LSTM layer which takes l_in as the input layer
-    # We clip the gradients at GRAD_CLIP to prevent the problem of exploding gradients. 
-
-    l_forward_1 = lasagne.layers.LSTMLayer(
-        l_in, N_HIDDEN, grad_clipping=GRAD_CLIP,
-        nonlinearity=lasagne.nonlinearities.tanh)
-
-    l_forward_2 = lasagne.layers.LSTMLayer(
-        l_forward_1, N_HIDDEN, grad_clipping=GRAD_CLIP,
-        nonlinearity=lasagne.nonlinearities.tanh)
-
-    # The l_forward layer creates an output of dimension (batch_size, SEQ_LENGTH, N_HIDDEN)
-    # Since we are only interested in the final prediction, we isolate that quantity and feed it to the next layer. 
-    # The output of the sliced layer will then be of size (batch_size, N_HIDDEN)
-    l_forward_slice = lasagne.layers.SliceLayer(l_forward_2, -1, 1)
-
-    # The sliced output is then passed through the softmax nonlinearity to create probability distribution of the prediction
-    # The output of this stage is (batch_size, vocab_size)
-    l_out = lasagne.layers.DenseLayer(l_forward_slice, num_units=vocab_size, W = lasagne.init.Normal(), nonlinearity=lasagne.nonlinearities.softmax)
+    l_out = build_network(input_var)
 
     # Theano tensor for the targets
     target_values = T.ivector('target_output')
-    
+
     # lasagne.layers.get_output produces a variable for the output of the net
     network_output = lasagne.layers.get_output(l_out)
 
@@ -197,14 +177,14 @@ def main(num_epochs=NUM_EPOCHS):
     # Theano functions for training and computing cost
     print("Compiling functions ...")
     logging.debug('Compiling functions')
-    train = theano.function([l_in.input_var, target_values], loss, updates=updates, allow_input_downcast=True)
-    compute_cost = theano.function([l_in.input_var, target_values], cost, allow_input_downcast=True)
+    train = theano.function([input_var, target_values], loss, updates=updates, allow_input_downcast=True)
+    compute_cost = theano.function([input_var, target_values], cost, allow_input_downcast=True)
 
     # In order to generate text from the network, we need the probability distribution of the next character given
     # the state of the network and the input (a seed).
     # In order to produce the probability distribution of the prediction, we compile a function called probs. 
     
-    probs = theano.function([l_in.input_var],network_output,allow_input_downcast=True)
+    probs = theano.function([input_var],network_output,allow_input_downcast=True)
 
     # The next function generates text given a phrase of length at least SEQ_LENGTH.
     # The phrase is set using the variable generation_phrase.
@@ -293,5 +273,110 @@ def main(num_epochs=NUM_EPOCHS):
     except KeyboardInterrupt:
         pass
 
+def build_network(input_var=None):
+    print("Building network ...")
+    logging.debug('Building network ...')
+   
+    # First, we build the network, starting with an input layer
+    # Recurrent layers expect input of shape
+    # (batch size, SEQ_LENGTH, num_features)
+    network = lasagne.layers.InputLayer(shape=(None, None, vocab_size),input_var=input_var)
+
+    # We now build the LSTM layer which takes l_in as the input layer
+    # We clip the gradients at GRAD_CLIP to prevent the problem of exploding gradients. 
+
+    network = lasagne.layers.LSTMLayer(
+        network, N_HIDDEN, grad_clipping=GRAD_CLIP,
+        nonlinearity=lasagne.nonlinearities.tanh)
+
+    network = lasagne.layers.LSTMLayer(
+        network, N_HIDDEN, grad_clipping=GRAD_CLIP,
+        nonlinearity=lasagne.nonlinearities.tanh)
+
+    # The l_forward layer creates an output of dimension (batch_size, SEQ_LENGTH, N_HIDDEN)
+    # Since we are only interested in the final prediction, we isolate that quantity and feed it to the next layer. 
+    # The output of the sliced layer will then be of size (batch_size, N_HIDDEN)
+    network = lasagne.layers.SliceLayer(network, -1, 1)
+
+    # The sliced output is then passed through the softmax nonlinearity to create probability distribution of the prediction
+    # The output of this stage is (batch_size, vocab_size)
+    network = lasagne.layers.DenseLayer(network, num_units=vocab_size, W = lasagne.init.Normal(), nonlinearity=lasagne.nonlinearities.softmax)
+
+    return network
+
+def predict(model_name):
+    input_var = T.tensor3('inputs')
+    network = build_network(input_var)
+    # Theano tensor for the targets
+    target_values = T.ivector('target_output')
+
+    # lasagne.layers.get_output produces a variable for the output of the net
+    network_output = lasagne.layers.get_output(network)
+
+    # In order to generate text from the network, we need the probability distribution of the next character given
+    # the state of the network and the input (a seed).
+    # In order to produce the probability distribution of the prediction, we compile a function called probs. 
+    
+    probs = theano.function([input_var],network_output,allow_input_downcast=True)
+
+    # The next function generates text given a phrase of length at least SEQ_LENGTH.
+    # The phrase is set using the variable generation_phrase.
+    # The optional input "N" is used to set the number of characters of text to predict. 
+
+    with np.load(model_name) as f:
+        param_values = [f['arr_%d' % i] for i in range(len(f.files))]
+    lasagne.layers.set_all_param_values(network, param_values)
+
+    with open('phrase_lists.txt', 'r') as f_in:
+        phrase_list = f_in.read().split('\n')
+
+    feature_list = []
+    target_list = []
+    for phrase in phrase_list:
+        feature, text_feature = generate_feature(phrase)
+        feature_list.append(text_feature)
+
+        vecs_feature = np.zeros((len(feature), vocab_size), dtype='int32')
+        for index in range(len(feature)):
+            vecs_feature[index][feature[index]] = 1
+        if not len(feature) >= SEQ_LENGTH:
+            continue
+        # assert(len(feature)>=SEQ_LENGTH)
+        sample_ix = []
+        x,_ = gen_data(len(feature)-SEQ_LENGTH, 1, data=vecs_feature, target=feature, return_target=False)
+
+        for i in range(30):
+            # Pick the character that got assigned the highest probability
+            ix = np.argmax(probs(x).ravel())
+            # Alternatively, to sample from the distribution instead:
+            # ix = np.random.choice(np.arange(vocab_size), p=probs(x).ravel())
+            sample_ix.append(ix)
+            x[:,0:SEQ_LENGTH-1,:] = x[:,1:,:]
+            x[:,SEQ_LENGTH-1,:] = 0
+            x[0,SEQ_LENGTH-1,sample_ix[-1]] = 1. 
+
+        random_snippet = ' '.join([ix_to_char[ix] for ix in feature]) + ' ' + ' '.join([ix_to_char[ix] for ix in sample_ix])   
+        print("----\n %s \n----" % random_snippet)
+        logging.info("----\n %s \n----" % random_snippet)
+
+
+def generate_feature(input_string):
+    text_phrase = re.findall(TOKEN_PATTERN, input_string)
+    generation_phrase = np.zeros(len(text_phrase))
+    infrequent_table = {}
+    infrequent_counter = 0
+    for index, item in enumerate(text_phrase):
+        if item in char_to_ix:
+            generation_phrase[index] = char_to_ix[item]
+        elif item in infrequent_table:
+            generation_phrase[index] = char_to_ix[infrequent_table[item]]
+        else:
+            infrequent_counter += 1
+            generation_phrase[index] = char_to_ix['INFREQUENT_{}'.format(infrequent_counter%30)]
+            infrequent_table[item] = 'INFREQUENT_{}'.format(infrequent_counter%30)
+    print(infrequent_table)
+    return generation_phrase, text_phrase
+
 if __name__ == '__main__':
     main()
+    # predict('model_50.npz')

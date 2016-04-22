@@ -11,10 +11,13 @@ import numpy as np
 import data_reader
 import tokenizer
 import slist
+import gensim
 
 LOG_TYPE_SHELL = 0
 LOG_TYPE_EDITOR = LOG_TYPE_SHELL + 1
-
+# TOKEN_PATTERN = '[\"\'].+?[\"\']|[a-zA-Z0-9\(\)\[\]]+|[\.\{\}\:\;\=\+\-\*\/]'
+TOKEN_PATTERN = '[a-zA-Z0-9\_\(\)\[\]]+|[\.\{\}\:\;\=\+\-\*\/]'
+# TOKEN_PATTERN = '[a-zA-Z0-9\_]+'
 class Generator():
     def __init__(self, args, reload=False):
         # Set up data
@@ -41,45 +44,7 @@ class Generator():
             self.NWORDS[word] += 1
         self.lstm()
         return 'Hello from generator'
-        # self.data_set = self.data_set.filter_by(lambda x: x.log_type == LOG_TYPE_EDITOR)
-        # self.data_set = self.data_set.map(lambda x: x.combine())
-        # content_set = self.data_set.flatmap(lambda x: x.cmd_list).map(lambda x: (x['content'], x['action']))
-        # lines = content_set.flatmap(lambda x: [(item,x[1]) for item in x[0].split('\n')])
-        # lines = lines.map(lambda x: (self._sanitize(x[0]), x[1])).filter_by(lambda x: len(x[0])>0)
 
-        # tokens = lines.map(lambda x: (tokenizer.Tokenize(x[0]), x[1])).filter_by(lambda x: x[0]>0)
-        # print tokens.count()
-        # print tokens.map(lambda x: type(x[0]).__name__).distinct()
-        # print 'Number of IfStmt'
-        # print tokens.filter_by(lambda x: type(x[0]).__name__ == 'IfStmt').count()
-        # print 'Number of Assignment'
-        # print tokens.filter_by(lambda x: type(x[0]).__name__ == 'Assignment').count()
-        # print 'Number of WhileStmt'
-        # print tokens.filter_by(lambda x: type(x[0]).__name__ == 'WhileStmt').count()
-        # print 'Number of MethodCall'
-        # print tokens.filter_by(lambda x: type(x[0]).__name__ == 'MethodCall').count()
-        # print 'Number of Unclassified'
-        # print tokens.filter_by(lambda x: type(x[0]).__name__ == 'Token').count()
-        # print 'Number of Tokens with comment'
-        # print tokens.filter_by(lambda x: x[0].comment).count()
-
-        # tmp_tokens =  tokens.filter_by(lambda x: type(x[0]).__name__ == 'Token')
-        # print [item[0].content for item in tmp_tokens]
-        # features = tokens.filter_by(lambda x: len(x[0].comment)>=2).flatmap(lambda x: x[0].feature_extraction())
-        # features = features.group_by(lambda x: '{}_{}'.format(x[0], x[1])).sort_by(lambda x: -len(x[1]))
-        # print features.map(lambda x: (x[0], len(x[1])))[:50]
-
-        # print lines.count()
-        # print lines.filter_by(lambda x: len(filter(lambda c: not c in ['\t',' '], x[0]))>5).count()
-        # print lines.filter_by(lambda x: '=' in x[0]).count()
-        # print lines.filter_by(lambda x: '=' in x[0] and not x[1] in ['paste', 'copy']).count()
-        # print lines.filter_by(lambda x: '=' in x[0]).map(lambda x: x[1]).distinct()
-        # print lines.filter_by(lambda x: 'if' in x[0]).count()
-        # print lines.filter_by(lambda x: 'if' in x[0] and not x[1] in ['paste', 'copy']).count()
-        # print lines.filter_by(lambda x: 'if' in x[0]).map(lambda x: x[1]).distinct()
-        # print lines.filter_by(lambda x: 'while' in x[0]).count()
-        # print lines.filter_by(lambda x: 'while' in x[0] and not x[1] in ['paste', 'copy']).count()
-        # print lines.filter_by(lambda x: 'while' in x[0]).map(lambda x: x[1]).distinct()
     def response(self, content):
         result = ''
         content = content.replace('\'', '\"')
@@ -97,8 +62,6 @@ class Generator():
         return result
 
     def lstm(self):
-        # TOKEN_PATTERN = '[\"\'].+?[\"\']|[a-zA-Z0-9\(\)\[\]]+|[\.\{\}\:\;\=\+\-\*\/]'
-        TOKEN_PATTERN = '[a-zA-Z0-9\_\(\)\[\]]+|[\.\{\}\:\;\=\+\-\*\/]'
         self.WORDLIB = self.data_set.flatmap(lambda x: x.cmd_list).filter_by(lambda x: x['action'] in ['paste']).map(lambda x: x['content'])
         self.WORDLIB = self.WORDLIB.map(lambda content: filter(lambda x: ord(x)<128 and ord(x)>0, content))
         self.WORDLIB = self.WORDLIB.filter_by(lambda x: len(x) > 1000 and 'import java.io.IOException;' in x)
@@ -182,8 +145,32 @@ class Generator():
             pre_lib = self.LIB_RESULTS[len(self.LIB_RESULTS)]
             tmp_lib = collections.defaultdict(lambda: 1)
 
-    def _clustering(self):
-        return 'Clustering'
+    def word_vec(self):
+        self.WORDLIB = self.data_set.flatmap(lambda x: x.cmd_list).filter_by(lambda x: x['action'] in ['paste']).map(lambda x: x['content'])
+        self.WORDLIB = self.WORDLIB.map(lambda content: filter(lambda x: ord(x)<128 and ord(x)>0, content))
+        SHORT_LIB = self.data_set.flatmap(lambda x: x.cmd_list).filter_by(lambda x: x['action'] in ['insert', 'paste']).map(lambda x: x['content'])
+        SHORT_LIB = SHORT_LIB.map(lambda content: filter(lambda x: ord(x)<128 and ord(x)>0, content)).filter_by(lambda x: len(x) <= 1000)
+        self.WORDLIB = self.WORDLIB.filter_by(lambda x: len(x) > 1000 and 'import java.io.IOException;' in x)
+        long_set = list(set(self.WORDLIB.flatmap(lambda x: re.findall(TOKEN_PATTERN, x))))
+        short_set = list(set(SHORT_LIB.flatmap(lambda x: re.findall(TOKEN_PATTERN, x))))
+        for key in short_set:
+            if not key in long_set:
+                print(key)
+        print('********************')
+        for key in long_set:
+            if not key in short_set:
+                print(key)
+        # model = gensim.models.Word2Vec(self.WORDLIB, min_count=10, workers=4)
+        # model.save('word_vec_model')
+        return
+
+    def insert_info_converter(self):
+        SHORT_LIB = self.data_set.flatmap(lambda x: [(item, x.user_name) for item in x.cmd_list]).filter_by(lambda x: x[0]['action'] in ['insert'])
+        SHORT_LIB = SHORT_LIB.group_by(lambda x: x[1]).map(lambda x: '\n'.join([item[0]['content'] for item in x[1]])).map(lambda x: filter(lambda c: ord(c)<128 and ord(c)>0, x))
+        for index, item in enumerate(SHORT_LIB):
+            with open('data/insert_{}.txt'.format(index), 'w') as f_out:
+                f_out.write(item)
+        # SHORT_LIB = SHORT_LIB.map(lambda content: filter(lambda x: ord(x)<128 and ord(x)>0, content)).filter_by(lambda x: len(x) <= 1000)
 
     def _sanitize(self, content):
         content = filter(lambda x: not x in [' ', '\t', ';', '\n', '\r'], content)
@@ -218,3 +205,5 @@ generator = Generator(config)
 os.chdir(tmp_path)
 # generator.pattern_mining()
 generator.lstm()
+# generator.word_vec()
+# generator.insert_info_converter()
